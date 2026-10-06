@@ -235,6 +235,7 @@ function initLocMap() {
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 15, attribution: '© OpenStreetMap' }).addTo(locMap);
   locMap.on('click', e => setLoc({ lat: e.latlng.lat, lon: e.latlng.lng, name: fmtDM(e.latlng.lat, e.latlng.lng) }));
   if (S.loc) locMarker = L.marker([S.loc.lat, S.loc.lon]).addTo(locMap);
+  if (window.ResizeObserver) new ResizeObserver(() => locMap.invalidateSize()).observe($('#locmap'));
 }
 async function searchLoc() {
   const q = $('#locq').value.trim(); if (!q) return;
@@ -551,8 +552,13 @@ function arrowSvg(d) { return `<svg class="arrow" viewBox="-7 -7 14 14"><g trans
 
 /* ---------------------------------------------------------- sinottica */
 const SYN_MODELS = ['ecmwf_ifs', 'icon_global', 'gfs_global'];
+function synEmpty() {
+  if (synMap) return;
+  $('#synmap').innerHTML = `<div class="empty"><p><b>Nessuna posizione impostata</b></p><p class="small muted">La carta si centra sul campo di regata: lo scelga prima nella scheda Vento.</p><button class="btn primary" id="goVento">Scegli la posizione</button></div>`;
+  $('#goVento').onclick = () => showTab('vento');
+}
 async function loadSynoptic() {
-  if (!S.loc) return toast('Scelga prima una posizione nella scheda Vento');
+  if (!S.loc) { synEmpty(); return toast('Scelga prima una posizione nella scheda Vento'); }
   const btn = $('#synLoad'); btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Scarico la carta…';
   try {
     const step = 2, dLat = 14, dLon = 20;
@@ -718,7 +724,9 @@ let synMap, synLayer;
 function drawSynoptic(s) {
   if (!SYN || !window.L) return;
   if (!synMap) {
+    $('#synmap').innerHTML = '';
     synMap = L.map('synmap', { attributionControl: true }).setView([S.loc.lat, S.loc.lon], 4);
+    if (window.ResizeObserver) new ResizeObserver(() => synMap.invalidateSize()).observe($('#synmap'));
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 9, attribution: '© OpenStreetMap', opacity: 0.55 }).addTo(synMap);
   }
   if (synLayer) synLayer.remove();
@@ -730,7 +738,7 @@ function drawSynoptic(s) {
   for (let lev = lo; lev <= hi; lev += 4) {
     const segs = contour(U, lev).map(sg => sg.map(toLL));
     if (!segs.length) continue;
-    L.polyline(segs, { color: ink2, weight: lev === 1012 ? 1.8 : 1.1, opacity: .85, interactive: false }).addTo(synLayer);
+    L.polyline(segs, { color: cssv('--ink'), weight: lev % 8 === 4 ? 2.6 : 1.7, opacity: .9, interactive: false }).addTo(synLayer);
     const lab = segs[Math.floor(segs.length / 2)][0];
     L.marker(lab, { icon: L.divIcon({ className: '', html: `<span class="isolab">${lev}</span>`, iconSize: null }), interactive: false }).addTo(synLayer);
   }
@@ -1162,7 +1170,7 @@ function showTab(t) {
   $$('section.view').forEach(s => s.hidden = s.id !== 'v-' + t);
   try { history.replaceState(null, '', '#' + t); } catch (e) { }
   if (t === 'vento') { setTimeout(() => { initLocMap(); locMap && locMap.invalidateSize(); if (W) { drawWind(); drawWave(); } }, 30); }
-  if (t === 'sinottica') { setTimeout(() => { if (synMap) synMap.invalidateSize(); else if (S.loc && !SYN) loadSynoptic(); }, 30); }
+  if (t === 'sinottica') { setTimeout(() => { if (synMap) synMap.invalidateSize(); else if (!S.loc) synEmpty(); else if (!SYN) loadSynoptic(); }, 30); }
   if (t === 'vele') setTimeout(drawSailChart, 30);
   window.scrollTo(0, 0);
 }
