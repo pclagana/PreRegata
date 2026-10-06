@@ -759,12 +759,14 @@ async function askClaude(content, system, maxTokens = 2500) {
   if (!r.ok) throw new Error(j.error?.message || 'HTTP ' + r.status);
   return (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n');
 }
-const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite'];
+const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3-flash-preview', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite'];
 /** Google Gemini (piano gratuito di AI Studio). Prova i modelli in ordine finché uno risponde. */
 async function askGemini(content, system, maxTokens = 2500) {
   const parts = content.map(c => c.type === 'text' ? { text: c.text } : { inline_data: { mime_type: c.source.media_type, data: c.source.data } });
   const models = [S.gemModel, ...GEMINI_MODELS].filter((m, i, a) => m && a.indexOf(m) === i);
-  let lastErr;
+  let lastErr, busy = 0;
+  for (let round = 0; round < 2; round++) {
+  if (round) await new Promise(r => setTimeout(r, 4000));
   for (const m of models) {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': S.geminiKey },
@@ -777,10 +779,13 @@ async function askGemini(content, system, maxTokens = 2500) {
       lastErr = new Error('Risposta vuota da Gemini'); continue;
     }
     lastErr = new Error(j.error?.message || 'HTTP ' + r.status);
-    if (r.status === 429) throw new Error('Limite gratuito di Gemini raggiunto per ora: riprovi tra un minuto.');
     if (r.status === 400 && /API key/i.test(lastErr.message)) throw new Error('Chiave Gemini non valida: la controlli in Impostazioni.');
+    // modello sovraccarico o limite raggiunto: provo il modello successivo
+    if ([429, 500, 503, 504].includes(r.status) || /demand|overload|unavailable/i.test(lastErr.message)) { busy++; continue; }
     if (r.status !== 404) throw lastErr;
   }
+  }
+  if (busy) throw new Error('I server gratuiti di Gemini sono molto carichi in questo momento. Riprovi tra qualche minuto, oppure usi il pulsante senza chiave (svuoti la chiave in Impostazioni) per passare da Claude.');
   throw lastErr;
 }
 /** Con la chiave API chiama Anthropic; senza chiave passa la richiesta a claude.ai (incluso nell'abbonamento) e aspetta la risposta incollata. */
