@@ -1004,7 +1004,7 @@ async function calcLegs() {
       const wm = windAt(base + 1, tm), w1 = windAt(base + 2, t1), wl = windAt(base + 3, tm), wr = windAt(base + 4, tm);
       const twa = angDiff(lg.brg, wm.twd);
       // vele nel corso del lato, ogni 30'
-      const changes = []; let last = null;
+      const picks = [];
       for (let tt = t0; tt <= t1 + 1; tt += Math.max(30 * 60e3, dur / 12)) {
         const f = (tt - t0) / Math.max(dur, 1);
         const ww = f < 0.5 ? windAt(base, tt) : windAt(base + 2, tt);
@@ -1012,8 +1012,17 @@ async function calcLegs() {
         const tws = ww.tws == null ? wmid.tws : (ww.tws + wmid.tws) / 2, twd = wmid.twd;
         if (tws == null || twd == null) continue;
         const sp = pickSail(angDiff(lg.brg, twd), tws, b);
-        if (sp && sp.sail.name !== last) { changes.push({ t: tt, sail: sp.sail.name, i: sp.i, exact: sp.exact, tws, twa: angDiff(lg.brg, twd) }); last = sp.sail.name; }
+        if (sp) picks.push({ t: tt, sail: sp.sail.name, i: sp.i, exact: sp.exact, tws, twa: angDiff(lg.brg, twd) });
       }
+      // isteresi: ignoro cambi che durano un solo campione
+      const changes = [];
+      picks.forEach((p, n) => {
+        const last = changes.at(-1);
+        if (last && last.sail === p.sail) return;
+        const next = picks[n + 1];
+        if (last && next && next.sail !== p.sail) return;
+        changes.push(p);
+      });
       // note tattiche automatiche
       const notes = [];
       const shift = (w1.twd != null && w0.twd != null) ? angDiff(w0.twd, w1.twd) : 0;
