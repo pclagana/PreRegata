@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 
@@ -211,11 +211,26 @@
 <!-- ================= IMPOSTAZIONI ================= -->
 <section class="view" id="v-impostazioni" hidden>
   <div class="panel">
-    <h2>Analisi con AI</h2>
-    <p class="small muted"><b>Senza chiave (gratis):</b> ogni analisi apre Claude con la richiesta già scritta; Lei invia, copia la risposta e la incolla nell'app. Usa il Suo abbonamento Claude, senza costi aggiuntivi.</p><p class="small muted"><b>Con chiave API (facoltativa):</b> tutto avviene dentro l'app in un solo tocco, ma ogni analisi ha un piccolo costo a consumo (console.anthropic.com). La chiave resta solo su questo dispositivo.</p>
-    <label class="f">Chiave API Anthropic<input id="apiKey" type="password" autocomplete="off" placeholder="sk-ant-…"></label>
-    <label class="f">Modello<input id="aiModel" placeholder="claude-sonnet-5-5"></label>
-    <div class="row"><button class="btn primary" id="apiSave">Salva</button><button class="btn" id="apiTest">Prova</button><span class="small muted" id="apiStatus"></span></div>
+    <h2>Analisi automatica gratuita</h2>
+    <p class="small muted">Con una chiave gratuita di Google Gemini l'app legge carte, istruzioni di regata e tabelle vele e scrive la tattica da sola, con un tocco. Non serve carta di credito.</p>
+    <ol class="small">
+      <li>Apra <span class="mono">aistudio.google.com/apikey</span> ed entri con il Suo account Google.</li>
+      <li>Prema <b>Create API key</b> e copi la chiave.</li>
+      <li>La incolli qui sotto e prema <b>Prova</b>.</li>
+    </ol>
+    <label class="f">Chiave Gemini<input id="gemKey" type="password" autocomplete="off" placeholder="AIza…"></label>
+    <div class="row"><button class="btn primary" id="gemSave">Salva</button><button class="btn" id="gemTest">Prova</button><span class="small muted" id="gemStatus"></span></div>
+    <p class="small muted">Il piano gratuito ha un limite di richieste al minuto e al giorno, ampio per l'uso in regata. Google può usare i dati inviati sul piano gratuito per migliorare i suoi servizi: non vengono inviati dati personali, solo meteo, percorso e foto che sceglie Lei.</p>
+  </div>
+  <div class="panel">
+    <h2>Altre modalità</h2>
+    <p class="small muted"><b>Senza chiave:</b> ogni analisi apre Claude con la richiesta già scritta; Lei invia, copia la risposta e la incolla nell'app.</p>
+    <details>
+      <summary>Chiave API Anthropic (a pagamento, facoltativa)</summary>
+      <label class="f">Chiave API Anthropic<input id="apiKey" type="password" autocomplete="off" placeholder="sk-ant-…"></label>
+      <label class="f">Modello<input id="aiModel" placeholder="claude-sonnet-5-5"></label>
+      <div class="row"><button class="btn primary" id="apiSave">Salva</button><button class="btn" id="apiTest">Prova</button><span class="small muted" id="apiStatus"></span></div>
+    </details>
   </div>
   <div class="panel">
     <h2>Dati e fonti</h2>
@@ -230,6 +245,6 @@
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

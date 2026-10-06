@@ -44,7 +44,7 @@ const S = Object.assign({
   boats: [EXAMPLE_BOAT],
   boatId: 'esempio',
   route: { start: '', notes: '', wps: [] },
-  apiKey: '', aiModel: 'claude-sonnet-5-5'
+  apiKey: '', aiModel: 'claude-sonnet-5-5', geminiKey: '', gemModel: ''
 }, load('prg_state', {}));
 const save = () => store('prg_state', S);
 
@@ -759,8 +759,33 @@ async function askClaude(content, system, maxTokens = 2500) {
   if (!r.ok) throw new Error(j.error?.message || 'HTTP ' + r.status);
   return (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n');
 }
+const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite'];
+/** Google Gemini (piano gratuito di AI Studio). Prova i modelli in ordine finché uno risponde. */
+async function askGemini(content, system, maxTokens = 2500) {
+  const parts = content.map(c => c.type === 'text' ? { text: c.text } : { inline_data: { mime_type: c.source.media_type, data: c.source.data } });
+  const models = [S.gemModel, ...GEMINI_MODELS].filter((m, i, a) => m && a.indexOf(m) === i);
+  let lastErr;
+  for (const m of models) {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': S.geminiKey },
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts }], generationConfig: { maxOutputTokens: Math.max(maxTokens, 4000) } })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) {
+      const t = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+      if (t) { if (S.gemModel !== m) { S.gemModel = m; save(); } return t; }
+      lastErr = new Error('Risposta vuota da Gemini'); continue;
+    }
+    lastErr = new Error(j.error?.message || 'HTTP ' + r.status);
+    if (r.status === 429) throw new Error('Limite gratuito di Gemini raggiunto per ora: riprovi tra un minuto.');
+    if (r.status === 400 && /API key/i.test(lastErr.message)) throw new Error('Chiave Gemini non valida: la controlli in Impostazioni.');
+    if (r.status !== 404) throw lastErr;
+  }
+  throw lastErr;
+}
 /** Con la chiave API chiama Anthropic; senza chiave passa la richiesta a claude.ai (incluso nell'abbonamento) e aspetta la risposta incollata. */
 function askAI(content, system, maxTokens, host, opts = {}) {
+  if (S.geminiKey) return askGemini(content, system, maxTokens);
   if (S.apiKey) return askClaude(content, system, maxTokens);
   const nImg = content.filter(c => c.type !== 'text').length;
   const text = content.filter(c => c.type === 'text').map(c => c.text).join('\n\n');
@@ -826,7 +851,7 @@ const SYS_METEO = 'Sei un meteorologo e tattico esperto di regate (inshore e off
 async function synAI() {
   const out = $('#synAIout');
   if (!SYN && !synImgs.length) return toast('Carichi la carta o aggiunga delle foto di carte ufficiali');
-  out.innerHTML = S.apiKey ? '<p><span class="spin"></span> Analizzo le carte…</p>' : '';
+  out.innerHTML = (S.apiKey || S.geminiKey) ? '<p><span class="spin"></span> Analizzo le carte…</p>' : '';
   try {
     const content = [];
     for (const f of synImgs) content.push(await fileToBlock(f));
@@ -944,7 +969,7 @@ async function readIdR(files) {
  "waypoints":[{"name":"...","lat":numero decimale o null,"lon":numero decimale o null,"round":"sinistra"|"dritta"|"" }],
  "notes":"cancelli, zone vietate, linea d'arrivo, tempo limite, percorsi alternativi, canale VHF e altre informazioni utili alla tattica"}
 Il primo waypoint è la partenza, l'ultimo l'arrivo. Converti le coordinate in gradi decimali (W e S negativi). Se una boa è un'isola o un punto noto senza coordinate, stima le coordinate e scrivi "(stimate)" nel nome. Se ci sono più percorsi, usa quello principale e descrivi gli altri nelle note.` });
-    if (!S.apiKey) st.textContent = '';
+    if (!S.apiKey && !S.geminiKey) st.textContent = '';
     const t = await askAI(content, 'Estrai dati strutturati da documenti di regata. Rispondi solo con JSON valido.', 3000, $('#idrHand'), { json: true, files: 'le istruzioni di regata' });
     const j = extractJSON(t);
     S.route.wps = (j.waypoints || []).map(w => ({ name: w.name || '', lat: w.lat ?? null, lon: w.lon ?? null, round: w.round || '' }));
@@ -963,7 +988,7 @@ async function readSails(files) {
     content.push({ type: 'text', text: `Queste sono tabelle o grafici di utilizzo delle vele di una barca (crossover chart, tabelle di velaio, polari). Estrai in JSON, senza altro testo:
 {"boat":"nome barca se presente o null","sails":[{"name":"...","twaMin":num,"twaMax":num,"twsMin":num,"twsMax":num}],"upAngle":num o null,"downAngle":num o null,"speeds":{"bolina":num,"traverso":num,"lasco":num,"poppa":num} oppure null}
 TWA in gradi (0-180), TWS in nodi. Se una vela ha un'area non rettangolare, usa il rettangolo che la rappresenta meglio. Ordina dalla vela più specifica alla più generica.` });
-    if (!S.apiKey) st.textContent = '';
+    if (!S.apiKey && !S.geminiKey) st.textContent = '';
     const j = extractJSON(await askAI(content, 'Estrai dati strutturati da tabelle tecniche di vela. Rispondi solo con JSON valido.', 3000, $('#sailHand'), { json: true, files: 'le tabelle vele' }));
     const b = boat();
     if (b.example) { const nb = { id: 'b' + Date.now(), name: j.boat || 'Nuova barca', upAngle: j.upAngle || 40, downAngle: j.downAngle || 150, speeds: { ...EXAMPLE_BOAT.speeds }, sails: [] }; S.boats.push(nb); S.boatId = nb.id; }
@@ -1108,7 +1133,7 @@ async function tacticsAI() {
     const b = boat();
     const legs = LEGS ? LEGS.map(l => `Lato ${l.k + 1} ${l.name}: rotta ${Math.round(l.brg)}°, ${r1(l.dist)} mn, ${fmtT(l.t0)}→${fmtT(l.t1)}, vento ${l.tws == null ? '?' : Math.round(l.tws)} kn da ${Math.round(l.twd)}°, TWA ${Math.round(l.twa)}°, rotazione durante il lato ${Math.round(l.shift)}°, pressione sx ${l.left == null ? '?' : Math.round(l.left)} kn / dx ${l.right == null ? '?' : Math.round(l.right)} kn, vele: ${l.changes.map(c => c.sail + ' da ' + fmtT(c.t, { time: true })).join(', ')}${l.round ? ', boa a ' + l.round : ''}`).join('\n') : 'Percorso non calcolato.';
     const text = `Prepara il piano tattico per questa regata.\n\nBARCA: ${b.name}; angolo di bolina ${b.upAngle}°, poppa ${b.downAngle}°; velocità ${JSON.stringify(b.speeds)}.\nVELE (TWA/TWS): ${b.sails.map(s => `${s.name} ${s.twaMin}-${s.twaMax}° ${s.twsMin}-${s.twsMax} kn`).join('; ')}\n\nPERCORSO E LATI CALCOLATI:\n${legs}\nNote IdR: ${S.route.notes || '—'}\n\nPREVISIONE (consenso pesato dei modelli migliori per la zona):\n${forecastDigest(96)}\n\nSINOTTICA:\n${synDigest()}\n${SYN?.aiText ? '\nLettura sinottica già fatta:\n' + SYN.aiText.slice(0, 3000) : ''}\n\nScrivi in sezioni brevi con ###: 1) Sintesi in 3 righe, 2) Partenza (lato favorito della linea, mure, prima scelta), 3) Lato per lato: dove andare, quando virare/strambare, vele e cambi con orari, 4) Momenti chiave (rotazioni, passaggi frontali, bonacce, notte), 5) Piano B se la previsione sbaglia (segnali da osservare in acqua), 6) Checklist vele da preparare in coperta per ogni lato.`;
-    if (!S.apiKey) st.textContent = '';
+    if (!S.apiKey && !S.geminiKey) st.textContent = '';
     out.innerHTML = md(await askAI([{ type: 'text', text }], SYS_METEO, 4000, out));
     st.textContent = 'Piano generato ' + fmtT(Date.now());
   } catch (e) { st.innerHTML = e.message === 'Annullato' ? '' : `<span class="err">${esc(e.message)}</span>`; }
@@ -1157,7 +1182,9 @@ function bind() {
   $('#boatUp').onchange = e => { boat().upAngle = +e.target.value; save(); };
   $('#boatDown').onchange = e => { boat().downAngle = +e.target.value; save(); };
   $('#sailAdd').onclick = () => { boat().sails.push({ name: 'Nuova vela', twaMin: 30, twaMax: 60, twsMin: 0, twsMax: 15 }); save(); renderBoats(); };
-  $('#apiKey').value = S.apiKey; $('#aiModel').value = S.aiModel;
+  $('#apiKey').value = S.apiKey; $('#aiModel').value = S.aiModel; $('#gemKey').value = S.geminiKey || '';
+  $('#gemSave').onclick = () => { S.geminiKey = $('#gemKey').value.trim(); save(); $('#gemStatus').textContent = S.geminiKey ? 'Salvata: le analisi ora sono automatiche' : 'Chiave rimossa'; };
+  $('#gemTest').onclick = async () => { $('#gemSave').click(); if (!S.geminiKey) return; $('#gemStatus').innerHTML = '<span class="spin"></span>'; try { await askGemini([{ type: 'text', text: 'Rispondi solo: ok' }], 'Test', 20); $('#gemStatus').textContent = 'Funziona (modello ' + S.gemModel + ')'; } catch (e) { $('#gemStatus').innerHTML = `<span class="err">${esc(e.message)}</span>`; } };
   $('#apiSave').onclick = () => { S.apiKey = $('#apiKey').value.trim(); S.aiModel = $('#aiModel').value.trim() || 'claude-sonnet-5-5'; save(); $('#apiStatus').textContent = 'Salvato'; };
   $('#apiTest').onclick = async () => { $('#apiSave').click(); $('#apiStatus').innerHTML = '<span class="spin"></span>'; try { await askClaude([{ type: 'text', text: 'Rispondi solo: ok' }], 'Test', 10); $('#apiStatus').textContent = 'Funziona'; } catch (e) { $('#apiStatus').innerHTML = `<span class="err">${esc(e.message)}</span>`; } };
   $('#exportBtn').onclick = () => { const box = $('#exportBox'); box.hidden = false; box.value = JSON.stringify({ boats: S.boats, route: S.route }, null, 1); box.select(); try { navigator.clipboard.writeText(box.value); toast('Copiato negli appunti'); } catch (e) { } };
