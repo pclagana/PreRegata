@@ -761,21 +761,32 @@ async function askClaude(content, system, maxTokens = 2500) {
 }
 const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3-flash-preview', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite'];
 /** Google Gemini (piano gratuito di AI Studio). Prova i modelli in ordine finché uno risponde. */
-async function askGemini(content, system, maxTokens = 2500) {
+async function askGemini(content, system, maxTokens = 2500, opts = {}) {
   const parts = content.map(c => c.type === 'text' ? { text: c.text } : { inline_data: { mime_type: c.source.media_type, data: c.source.data } });
   const models = [S.gemModel, ...GEMINI_MODELS].filter((m, i, a) => m && a.indexOf(m) === i);
   let lastErr, busy = 0;
   for (let round = 0; round < 2; round++) {
-  if (round) await new Promise(r => setTimeout(r, 4000));
+  if (round) { toast('Server occupati, riprovo tra pochi secondi…', 6000); await new Promise(r => setTimeout(r, 4000)); }
   for (const m of models) {
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
-      method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': S.geminiKey },
-      body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts }], generationConfig: { maxOutputTokens: Math.max(maxTokens, 4000) } })
-    });
-    const j = await r.json().catch(() => ({}));
+    toast(`Analisi in corso con ${m}…`, 60000);
+    const gen = { maxOutputTokens: Math.max(maxTokens, 4000) };
+    if (opts.json) gen.responseMimeType = 'application/json';
+    // ragionamento ridotto: risposte molto più rapide
+    const think = S.gemNoThink ? null : (/gemini-2/.test(m) ? { thinkingBudget: 0 } : { thinkingLevel: 'low' });
+    const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 60000);
+    let r, j;
+    try {
+      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
+        method: 'POST', signal: ctl.signal, headers: { 'content-type': 'application/json', 'x-goog-api-key': S.geminiKey },
+        body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts }], generationConfig: think ? { ...gen, thinkingConfig: think } : gen })
+      });
+      j = await r.json().catch(() => ({}));
+    } catch (e) { clearTimeout(timer); lastErr = new Error('Gemini non ha risposto in tempo'); busy++; continue; }
+    clearTimeout(timer);
+    if (r.status === 400 && /thinking/i.test(j.error?.message || '')) { S.gemNoThink = true; save(); return askGemini(content, system, maxTokens, opts); }
     if (r.ok) {
       const t = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
-      if (t) { if (S.gemModel !== m) { S.gemModel = m; save(); } return t; }
+      if (t) { if (S.gemModel !== m) { S.gemModel = m; save(); } $('#toast').hidden = true; return t; }
       lastErr = new Error('Risposta vuota da Gemini'); continue;
     }
     lastErr = new Error(j.error?.message || 'HTTP ' + r.status);
@@ -785,12 +796,13 @@ async function askGemini(content, system, maxTokens = 2500) {
     if (r.status !== 404) throw lastErr;
   }
   }
+  $('#toast').hidden = true;
   if (busy) throw new Error('I server gratuiti di Gemini sono molto carichi in questo momento. Riprovi tra qualche minuto, oppure usi il pulsante senza chiave (svuoti la chiave in Impostazioni) per passare da Claude.');
   throw lastErr;
 }
 /** Con la chiave API chiama Anthropic; senza chiave passa la richiesta a claude.ai (incluso nell'abbonamento) e aspetta la risposta incollata. */
 function askAI(content, system, maxTokens, host, opts = {}) {
-  if (S.geminiKey) return askGemini(content, system, maxTokens);
+  if (S.geminiKey) return askGemini(content, system, maxTokens, opts);
   if (S.apiKey) return askClaude(content, system, maxTokens);
   const nImg = content.filter(c => c.type !== 'text').length;
   const text = content.filter(c => c.type === 'text').map(c => c.text).join('\n\n');
