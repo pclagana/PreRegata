@@ -62,21 +62,20 @@ const MODELS = [
   { id: 'arome_france', name: 'AROME', src: 'Météo-France', res: 2.5 },
   { id: 'italia_meteo_arpae_icon_2i', name: 'ICON-2I', src: 'ItaliaMeteo', res: 2.2 },
   { id: 'icon_d2', name: 'ICON-D2', src: 'DWD', res: 2.2 },
-  { id: 'arome_austria', name: 'AROME AT', src: 'GeoSphere', res: 2.5 },
-  { id: 'ukmo_uk_2km', name: 'UKV 2km', src: 'Met Office', res: 2 },
-  { id: 'harmonie_arome_europe_dmi', name: 'HARMONIE DMI', src: 'DMI', res: 2 },
-  { id: 'harmonie_arome_europe', name: 'HARMONIE KNMI', src: 'KNMI', res: 5.5 },
+  { id: 'geosphere_arome_austria', name: 'AROME AT', src: 'GeoSphere', res: 2.5 },
+  { id: 'dmi_harmonie_arome_europe', name: 'HARMONIE DMI', src: 'DMI', res: 2 },
+  { id: 'knmi_harmonie_arome_europe', name: 'HARMONIE KNMI', src: 'KNMI', res: 5.5 },
   { id: 'icon_eu', name: 'ICON-EU', src: 'DWD', res: 7 },
-  { id: 'ukmo_global_10km', name: 'UKMO Global', src: 'Met Office', res: 10 },
+  { id: 'ukmo_global_deterministic_10km', name: 'UKMO Global', src: 'Met Office', res: 10 },
   { id: 'arpege_europe', name: 'ARPEGE', src: 'Météo-France', res: 11 },
   { id: 'icon_global', name: 'ICON Global', src: 'DWD', res: 13 },
   { id: 'gem_global', name: 'GEM', src: 'Env. Canada', res: 15, skill: 0.8 },
-  { id: 'ecmwf_ifs025', name: 'ECMWF IFS', src: 'ECMWF', res: 25, skill: 1.45 },
-  { id: 'ecmwf_aifs025', name: 'ECMWF AIFS', src: 'ECMWF', res: 25, skill: 1.3 },
-  { id: 'gfs025', name: 'GFS', src: 'NOAA', res: 25, skill: 0.85 }
+  { id: 'ecmwf_ifs', name: 'ECMWF IFS', src: 'ECMWF', res: 9, skill: 1.45, global: true },
+  { id: 'ecmwf_aifs025_single', name: 'ECMWF AIFS', src: 'ECMWF', res: 25, skill: 1.3 },
+  { id: 'gfs_global', name: 'GFS', src: 'NOAA', res: 25, skill: 0.85 }
 ];
 const MBYID = Object.fromEntries(MODELS.map(m => [m.id, m]));
-const kind = m => m.res <= 3 ? 'hr' : m.res <= 12 ? 'reg' : 'glob';
+const kind = m => m.global ? 'glob' : m.res <= 3 ? 'hr' : m.res <= 12 ? 'reg' : 'glob';
 
 /** Peso di un modello per tipo di campo e anticipo (ore). */
 function modelWeight(m, ctx, lead) {
@@ -551,7 +550,7 @@ function renderHourly() {
 function arrowSvg(d) { return `<svg class="arrow" viewBox="-7 -7 14 14"><g transform="rotate(${norm360(d + 180)})"><path d="M0 6V-5M-3.5-1.5L0-6l3.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></g></svg>`; }
 
 /* ---------------------------------------------------------- sinottica */
-const SYN_MODELS = ['ecmwf_ifs025', 'icon_global', 'gfs025'];
+const SYN_MODELS = ['ecmwf_ifs', 'icon_global', 'gfs_global'];
 async function loadSynoptic() {
   if (!S.loc) return toast('Scelga prima una posizione nella scheda Vento');
   const btn = $('#synLoad'); btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Scarico la carta…';
@@ -975,7 +974,7 @@ async function calcLegs() {
     }
     const pts = legs.flatMap(l => l.pts);
     const models = C.ranking.slice(0, 4).map(r => r.id);
-    if (!models.includes('ecmwf_ifs025')) models.push('ecmwf_ifs025');
+    if (!models.includes('ecmwf_ifs')) models.push('ecmwf_ifs');
     const j0 = await getJSON(`${OM}?latitude=${pts.map(p => p[0].toFixed(3)).join(',')}&longitude=${pts.map(p => p[1].toFixed(3)).join(',')}&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn&models=${models.join(',')}&timezone=GMT&forecast_days=7`);
     const arr = Array.isArray(j0) ? j0 : [j0];
     const ctx = S.ctx;
