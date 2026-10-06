@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pre-Regata</title>
+<meta name="theme-color" content="#0d6b78">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 L16 25 M16 4 L27 22 L16 22 Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M5 26 Q10 29 16 26 T27 26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      Pre-Regata
+    </div>
+    <div class="locchip" id="locchip">Nessuna posizione</div>
+    <button class="btn ghost" id="refreshBtn" title="Aggiorna previsioni"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg><span class="sr">Aggiorna</span></button>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" data-tab="vento" aria-selected="true"><svg viewBox="0 0 24 24"><path d="M3 8h11a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h8"/></svg>Vento</button>
+  <button role="tab" data-tab="sinottica" aria-selected="false"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 4a8 8 0 1 1-8 8M12 1v3M7 12a5 5 0 0 1 5-5"/></svg>Sinottica</button>
+  <button role="tab" data-tab="percorso" aria-selected="false"><svg viewBox="0 0 24 24"><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/><path d="M7 18 L17 13 L8 9 L17 6"/></svg>Percorso</button>
+  <button role="tab" data-tab="vele" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M11 2v18M11 3l9 15h-9zM9 6L4 18h5M3 21h18"/></svg>Vele</button>
+  <button role="tab" data-tab="impostazioni" aria-selected="false"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Impost.</button>
+</nav>
+
+<main class="wrap">
+
+<!-- ================= VENTO ================= -->
+<section class="view" id="v-vento">
+  <div class="panel">
+    <div class="panel-head"><h2>Posizione</h2><span class="small muted">Nome del luogo, coordinate (es. 44°18.5'N 9°12.3'E) o tocco sulla mappa</span></div>
+    <div class="row">
+      <input id="locq" class="grow" placeholder="Es. Portofino, Malcesine, 43.71 7.42" autocomplete="off">
+      <button class="btn primary" id="locSearch">Cerca</button>
+      <button class="btn" id="locGps"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>GPS</button>
+    </div>
+    <div class="results" id="locres"></div>
+    <div id="locmap"></div>
+    <div class="row">
+      <span class="eyebrow">Tipo di campo</span>
+      <div class="seg" id="ctxSeg">
+        <button data-v="lago" aria-pressed="false">Lago</button>
+        <button data-v="costiero" aria-pressed="true">Costiero</button>
+        <button data-v="offshore" aria-pressed="false">Offshore</button>
+      </div>
+      <span class="small muted" id="ctxHint"></span>
+    </div>
+  </div>
+
+  <div class="panel" id="windPanel">
+    <div class="panel-head">
+      <h2>Vento previsto</h2>
+      <div class="row">
+        <div class="seg" id="rangeSeg">
+          <button data-v="24" aria-pressed="false">24h</button>
+          <button data-v="48" aria-pressed="false">48h</button>
+          <button data-v="72" aria-pressed="true">72h</button>
+          <button data-v="168" aria-pressed="false">7gg</button>
+        </div>
+      </div>
+    </div>
+    <div id="windStatus" class="small muted">Scelga una posizione per scaricare le previsioni.</div>
+    <div class="stats" id="windStats" hidden></div>
+    <div>
+      <div class="eyebrow" style="margin-bottom:6px">Modelli — in grassetto i migliori per questa zona (peso tra parentesi). Tocchi per mostrarli sul grafico.</div>
+      <div class="models" id="modelChips"></div>
+    </div>
+    <div class="legend" id="wlegend"></div>
+    <div class="chartbox"><canvas id="wchart"></canvas><div class="tip" id="wtip" hidden></div></div>
+    <div id="waveBox" hidden>
+      <div class="eyebrow">Onda significativa (m)</div>
+      <div class="chartbox"><canvas id="wavechart"></canvas></div>
+    </div>
+    <details>
+      <summary>Tabella oraria</summary>
+      <div class="tablewrap"><table id="htable"></table></div>
+    </details>
+  </div>
+</section>
+
+<!-- ================= SINOTTICA ================= -->
+<section class="view" id="v-sinottica" hidden>
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Carta sinottica</h2>
+      <span class="small muted" id="synSrc">Isobare ogni 4 hPa dal modello ECMWF IFS</span>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="synLoad">Carica carta</button>
+      <input type="range" id="synT" min="0" max="20" value="0" class="grow" aria-label="Ora della carta">
+      <span class="mono small" id="synTl">—</span>
+    </div>
+    <div id="synmap"></div>
+    <div class="legend"><span><b class="hl H" style="font-size:14px">A</b> alta pressione</span><span><b class="hl L" style="font-size:14px">B</b> bassa pressione</span><span><i style="background:var(--ink-2)"></i> isobara (hPa)</span><span>✚ posizione scelta</span></div>
+  </div>
+  <div class="panel">
+    <div class="panel-head"><h2>Evoluzione del tempo</h2></div>
+    <div id="synSummary" class="ai"><p class="muted">Carichi la carta per avere la lettura automatica: tendenza barometrica, centri di pressione vicini e loro spostamento, vento di gradiente.</p></div>
+    <div class="row">
+      <label class="btn"><svg viewBox="0 0 24 24"><path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/></svg>Aggiungi carte ufficiali (foto)<input type="file" id="synImgs" accept="image/*" multiple hidden></label>
+      <button class="btn primary" id="synAI">Analisi con AI</button>
+      <span class="small muted" id="synImgsN"></span>
+    </div>
+    <div id="synAIout" class="ai"></div>
+    <div class="note">Carte ufficiali da consultare: <a id="lkMO" target="_blank" rel="noopener" href="https://www.metoffice.gov.uk/weather/maps-and-charts/surface-pressure">Met Office</a> ·
+      <a target="_blank" rel="noopener" href="https://www.dwd.de/DE/leistungen/hobbymet_wk_europa/hobbyeuropakarten.html">DWD</a> ·
+      <a target="_blank" rel="noopener" href="https://www.meteoam.it/it/home">Aeronautica Militare</a> ·
+      <a id="lkWindy" target="_blank" rel="noopener" href="https://www.windy.com">Windy</a>. Può fotografarle o salvarle e aggiungerle qui sopra per farle commentare.</div>
+  </div>
+</section>
+
+<!-- ================= PERCORSO ================= -->
+<section class="view" id="v-percorso" hidden>
+  <div class="panel">
+    <div class="panel-head"><h2>Percorso di regata</h2></div>
+    <div class="row">
+      <label class="btn"><svg viewBox="0 0 24 24"><path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/></svg>Leggi istruzioni di regata (foto o PDF)<input type="file" id="idrFile" accept="image/*,application/pdf" multiple hidden></label>
+      <span class="small muted" id="idrStatus"></span>
+    </div>
+    <div class="row">
+      <label class="f">Partenza (ora locale del campo)<input type="datetime-local" id="rStart"></label>
+      <label class="f">Barca<select id="rBoat"></select></label>
+    </div>
+    <div class="tablewrap">
+      <table id="wpTable">
+        <thead><tr><th>#</th><th>Boa / punto</th><th>Coordinate</th><th>Lasciare a</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="row">
+      <button class="btn" id="wpAdd">+ Aggiungi punto</button>
+      <button class="btn" id="wpHere">+ Posizione attuale</button>
+      <button class="btn ghost" id="wpClear">Svuota</button>
+    </div>
+    <label class="f">Note del percorso (cancelli, zone vietate, linee di arrivo, limiti di tempo…)<textarea id="rNotes"></textarea></label>
+    <div class="row"><button class="btn primary" id="legsCalc">Calcola lati e vele</button><span class="small muted" id="legsStatus"></span></div>
+  </div>
+
+  <div class="panel" id="legsPanel" hidden>
+    <div class="panel-head"><h2>Lati</h2><span class="small muted" id="legsMeta"></span></div>
+    <div class="legs" id="legs"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Tattica</h2></div>
+    <p class="small muted">Unisce percorso, previsioni dei modelli, lettura sinottica e tabelle vele in un piano di regata scritto.</p>
+    <div class="row"><button class="btn primary" id="tacAI">Prepara la tattica</button><span class="small muted" id="tacStatus"></span></div>
+    <div id="tacOut" class="ai"></div>
+  </div>
+</section>
+
+<!-- ================= VELE ================= -->
+<section class="view" id="v-vele" hidden>
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Barca e vele</h2>
+      <div class="row">
+        <select id="boatSel"></select>
+        <button class="btn" id="boatNew">Nuova barca</button>
+        <button class="btn ghost" id="boatDel">Elimina</button>
+      </div>
+    </div>
+    <div class="row">
+      <label class="f grow">Nome barca<input id="boatName"></label>
+      <label class="f">Angolo di bolina (TWA°)<input id="boatUp" type="number" min="25" max="60" step="1"></label>
+      <label class="f">Angolo di poppa (TWA°)<input id="boatDown" type="number" min="130" max="180" step="1"></label>
+    </div>
+    <div class="eyebrow">Velocità media della barca (nodi) per andatura</div>
+    <div class="row" id="boatSpeeds"></div>
+    <div class="row">
+      <label class="btn"><svg viewBox="0 0 24 24"><path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/></svg>Leggi tabelle vele (foto)<input type="file" id="sailImg" accept="image/*,application/pdf" multiple hidden></label>
+      <span class="small muted" id="sailStatus"></span>
+    </div>
+    <div class="note" id="exampleNote" hidden>Questa è una barca d'esempio con valori indicativi: la sostituisca con le tabelle reali della Sua barca.</div>
+  </div>
+
+  <div class="cols2">
+    <div class="panel">
+      <h3>Tabella di incrocio vele</h3>
+      <p class="small muted">Range di angolo (TWA) e intensità (TWS) per ogni vela. In caso di sovrapposizione vince la vela più in alto nella lista.</p>
+      <div class="tablewrap">
+        <table id="sailTable">
+          <thead><tr><th></th><th>Vela</th><th>TWA min</th><th>TWA max</th><th>TWS min</th><th>TWS max</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="row"><button class="btn" id="sailAdd">+ Aggiungi vela</button></div>
+    </div>
+    <div class="panel">
+      <h3>Grafico di incrocio</h3>
+      <p class="small muted">I punti numerati sono i lati del percorso calcolato.</p>
+      <div class="chartbox"><canvas id="sailchart"></canvas><div class="tip" id="stip" hidden></div></div>
+      <div class="legend" id="sailLegend"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= IMPOSTAZIONI ================= -->
+<section class="view" id="v-impostazioni" hidden>
+  <div class="panel">
+    <h2>Analisi con AI</h2>
+    <p class="small muted">Lettura delle carte e delle istruzioni di regata e stesura della tattica usano l'API di Anthropic. Serve una chiave API personale (console.anthropic.com): resta salvata solo su questo dispositivo e viene inviata solo ad Anthropic. Ogni analisi ha un piccolo costo a consumo.</p>
+    <label class="f">Chiave API Anthropic<input id="apiKey" type="password" autocomplete="off" placeholder="sk-ant-…"></label>
+    <label class="f">Modello<input id="aiModel" placeholder="claude-sonnet-5-5"></label>
+    <div class="row"><button class="btn primary" id="apiSave">Salva</button><button class="btn" id="apiTest">Prova</button><span class="small muted" id="apiStatus"></span></div>
+  </div>
+  <div class="panel">
+    <h2>Dati e fonti</h2>
+    <p class="small muted">Previsioni: Open-Meteo (dati di MeteoSwiss, ECMWF, DWD, Météo-France, ItaliaMeteo/ARPAE, KNMI, DMI, Met Office, NOAA, Environment Canada). Onda: Open-Meteo Marine. Mappe: OpenStreetMap. L'ultima previsione scaricata resta disponibile offline.</p>
+    <div class="row"><button class="btn" id="exportBtn">Esporta barche e percorso</button><label class="btn">Importa<input type="file" id="importFile" accept="application/json" hidden></label></div>
+    <textarea id="exportBox" hidden readonly></textarea>
+    <p class="small muted">Le previsioni sono uno strumento di supporto: verifichi sempre bollettini ufficiali e condizioni reali prima di uscire.</p>
+  </div>
+</section>
+
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
