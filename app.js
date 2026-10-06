@@ -759,6 +759,33 @@ async function askClaude(content, system, maxTokens = 2500) {
   if (!r.ok) throw new Error(j.error?.message || 'HTTP ' + r.status);
   return (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n');
 }
+/** Con la chiave API chiama Anthropic; senza chiave passa la richiesta a claude.ai (incluso nell'abbonamento) e aspetta la risposta incollata. */
+function askAI(content, system, maxTokens, host, opts = {}) {
+  if (S.apiKey) return askClaude(content, system, maxTokens);
+  const nImg = content.filter(c => c.type !== 'text').length;
+  const text = content.filter(c => c.type === 'text').map(c => c.text).join('\n\n');
+  const prompt = `${system}\n\n${nImg ? `[Allego ${nImg} file: ${opts.files || 'le foto'}.]\n\n` : ''}${text}`;
+  const copy = async () => { try { await navigator.clipboard.writeText(prompt); return true; } catch (e) { return false; } };
+  const url = prompt.length < 7000 ? 'https://claude.ai/new?q=' + encodeURIComponent(prompt) : 'https://claude.ai/new';
+  return new Promise((resolve, reject) => {
+    const box = document.createElement('div');
+    box.className = 'handoff';
+    box.innerHTML = `<p><b>Analisi gratuita con Claude</b></p>
+      <ol>
+        <li>Prema <b>Apri Claude</b>: la richiesta è già scritta${prompt.length < 7000 ? '' : ' negli appunti, la incolli nella chat'}.</li>
+        ${nImg ? `<li>Nella chat allega ${nImg === 1 ? 'il file' : 'gli stessi ' + nImg + ' file'} (${esc(opts.files || 'le foto')}) con la graffetta.</li>` : ''}
+        <li>Invii, poi copi la risposta di Claude e la incolli qui sotto.</li>
+      </ol>
+      <div class="row"><button class="btn primary" data-a="open">Apri Claude</button><button class="btn" data-a="copy">Copia richiesta</button><button class="btn ghost" data-a="x">Annulla</button></div>
+      <textarea placeholder="${opts.json ? 'Incolli qui la risposta (il blocco JSON)' : 'Incolli qui la risposta (facoltativo: serve per riusarla nella tattica)'}"></textarea>
+      <div class="row"><button class="btn primary" data-a="use">Usa la risposta</button><span class="small muted" data-s></span></div>`;
+    host.innerHTML = ''; host.append(box); host.hidden = false;
+    $('[data-a=open]', box).onclick = async () => { await copy(); window.open(url, '_blank', 'noopener'); };
+    $('[data-a=copy]', box).onclick = async () => { $('[data-s]', box).textContent = (await copy()) ? 'Copiata negli appunti' : 'Copia non riuscita: usi Apri Claude'; };
+    $('[data-a=x]', box).onclick = () => { box.remove(); reject(new Error('Annullato')); };
+    $('[data-a=use]', box).onclick = () => { const v = $('textarea', box).value.trim(); if (!v) { $('[data-s]', box).textContent = 'Incolli prima la risposta'; return; } box.remove(); resolve(v); };
+  });
+}
 async function fileToBlock(file, maxDim = 1600) {
   const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); });
   if (file.type === 'application/pdf') return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64.split(',')[1] } };
@@ -799,14 +826,14 @@ const SYS_METEO = 'Sei un meteorologo e tattico esperto di regate (inshore e off
 async function synAI() {
   const out = $('#synAIout');
   if (!SYN && !synImgs.length) return toast('Carichi la carta o aggiunga delle foto di carte ufficiali');
-  out.innerHTML = '<p><span class="spin"></span> Analizzo le carte…</p>';
+  out.innerHTML = S.apiKey ? '<p><span class="spin"></span> Analizzo le carte…</p>' : '';
   try {
     const content = [];
     for (const f of synImgs) content.push(await fileToBlock(f));
     content.push({ type: 'text', text: `Analizza l'evoluzione sinottica per una regata vicino a ${S.loc?.name || '?'}.\n\nDATI DELLA CARTA CALCOLATA (pressione al suolo):\n${synDigest()}\n\nPREVISIONE MODELLI LOCALI:\n${forecastDigest(96)}\n\n${synImgs.length ? 'Le immagini allegate sono carte ufficiali: leggi fronti, centri e isobare.' : ''}\nScrivi: 1) situazione attuale, 2) evoluzione nei prossimi 3-4 giorni con orari, 3) effetti attesi sul vento al campo (rotazioni, rinforzi, passaggi frontali), 4) coerenza o contrasti tra carta e modelli locali, 5) cosa tenere d'occhio. Usa titoli brevi con ### ed elenchi.` });
-    out.innerHTML = md(await askClaude(content, SYS_METEO, 2500));
+    const ans = await askAI(content, SYS_METEO, 2500, out, { files: 'le carte sinottiche' }); out.innerHTML = md(ans);
     SYN && (SYN.aiText = out.innerText);
-  } catch (e) { out.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  } catch (e) { out.innerHTML = e.message === 'Annullato' ? '' : `<p class="err">${esc(e.message)}</p>`; }
 }
 
 /* ---------------------------------------------------------- barche e vele */
@@ -917,14 +944,15 @@ async function readIdR(files) {
  "waypoints":[{"name":"...","lat":numero decimale o null,"lon":numero decimale o null,"round":"sinistra"|"dritta"|"" }],
  "notes":"cancelli, zone vietate, linea d'arrivo, tempo limite, percorsi alternativi, canale VHF e altre informazioni utili alla tattica"}
 Il primo waypoint è la partenza, l'ultimo l'arrivo. Converti le coordinate in gradi decimali (W e S negativi). Se una boa è un'isola o un punto noto senza coordinate, stima le coordinate e scrivi "(stimate)" nel nome. Se ci sono più percorsi, usa quello principale e descrivi gli altri nelle note.` });
-    const t = await askClaude(content, 'Estrai dati strutturati da documenti di regata. Rispondi solo con JSON valido.', 3000);
+    if (!S.apiKey) st.textContent = '';
+    const t = await askAI(content, 'Estrai dati strutturati da documenti di regata. Rispondi solo con JSON valido.', 3000, $('#idrHand'), { json: true, files: 'le istruzioni di regata' });
     const j = extractJSON(t);
     S.route.wps = (j.waypoints || []).map(w => ({ name: w.name || '', lat: w.lat ?? null, lon: w.lon ?? null, round: w.round || '' }));
     if (j.start) S.route.start = j.start.slice(0, 16);
     if (j.notes) S.route.notes = j.notes;
     save(); renderWps();
     st.textContent = `Trovati ${S.route.wps.length} punti. Controlli coordinate e lati di passaggio prima di calcolare.`;
-  } catch (e) { st.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  } catch (e) { st.innerHTML = e.message === 'Annullato' ? '' : `<span class="err">${esc(e.message)}</span>`; }
 }
 
 async function readSails(files) {
@@ -935,7 +963,8 @@ async function readSails(files) {
     content.push({ type: 'text', text: `Queste sono tabelle o grafici di utilizzo delle vele di una barca (crossover chart, tabelle di velaio, polari). Estrai in JSON, senza altro testo:
 {"boat":"nome barca se presente o null","sails":[{"name":"...","twaMin":num,"twaMax":num,"twsMin":num,"twsMax":num}],"upAngle":num o null,"downAngle":num o null,"speeds":{"bolina":num,"traverso":num,"lasco":num,"poppa":num} oppure null}
 TWA in gradi (0-180), TWS in nodi. Se una vela ha un'area non rettangolare, usa il rettangolo che la rappresenta meglio. Ordina dalla vela più specifica alla più generica.` });
-    const j = extractJSON(await askClaude(content, 'Estrai dati strutturati da tabelle tecniche di vela. Rispondi solo con JSON valido.', 3000));
+    if (!S.apiKey) st.textContent = '';
+    const j = extractJSON(await askAI(content, 'Estrai dati strutturati da tabelle tecniche di vela. Rispondi solo con JSON valido.', 3000, $('#sailHand'), { json: true, files: 'le tabelle vele' }));
     const b = boat();
     if (b.example) { const nb = { id: 'b' + Date.now(), name: j.boat || 'Nuova barca', upAngle: j.upAngle || 40, downAngle: j.downAngle || 150, speeds: { ...EXAMPLE_BOAT.speeds }, sails: [] }; S.boats.push(nb); S.boatId = nb.id; }
     const t = boat();
@@ -944,7 +973,7 @@ TWA in gradi (0-180), TWS in nodi. Se una vela ha un'area non rettangolare, usa 
     if (j.speeds) for (const k of Object.keys(t.speeds)) if (j.speeds[k]) t.speeds[k] = j.speeds[k];
     t.example = false; save(); renderBoats();
     st.textContent = `Lette ${t.sails.length} vele. Le controlli nella tabella.`;
-  } catch (e) { st.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  } catch (e) { st.innerHTML = e.message === 'Annullato' ? '' : `<span class="err">${esc(e.message)}</span>`; }
 }
 
 /* calcolo lati */
@@ -1047,7 +1076,7 @@ async function calcLegs() {
     });
     renderLegs();
     st.textContent = '';
-  } catch (e) { st.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  } catch (e) { st.innerHTML = e.message === 'Annullato' ? '' : `<span class="err">${esc(e.message)}</span>`; }
 }
 function renderLegs() {
   $('#legsPanel').hidden = false;
@@ -1079,9 +1108,10 @@ async function tacticsAI() {
     const b = boat();
     const legs = LEGS ? LEGS.map(l => `Lato ${l.k + 1} ${l.name}: rotta ${Math.round(l.brg)}°, ${r1(l.dist)} mn, ${fmtT(l.t0)}→${fmtT(l.t1)}, vento ${l.tws == null ? '?' : Math.round(l.tws)} kn da ${Math.round(l.twd)}°, TWA ${Math.round(l.twa)}°, rotazione durante il lato ${Math.round(l.shift)}°, pressione sx ${l.left == null ? '?' : Math.round(l.left)} kn / dx ${l.right == null ? '?' : Math.round(l.right)} kn, vele: ${l.changes.map(c => c.sail + ' da ' + fmtT(c.t, { time: true })).join(', ')}${l.round ? ', boa a ' + l.round : ''}`).join('\n') : 'Percorso non calcolato.';
     const text = `Prepara il piano tattico per questa regata.\n\nBARCA: ${b.name}; angolo di bolina ${b.upAngle}°, poppa ${b.downAngle}°; velocità ${JSON.stringify(b.speeds)}.\nVELE (TWA/TWS): ${b.sails.map(s => `${s.name} ${s.twaMin}-${s.twaMax}° ${s.twsMin}-${s.twsMax} kn`).join('; ')}\n\nPERCORSO E LATI CALCOLATI:\n${legs}\nNote IdR: ${S.route.notes || '—'}\n\nPREVISIONE (consenso pesato dei modelli migliori per la zona):\n${forecastDigest(96)}\n\nSINOTTICA:\n${synDigest()}\n${SYN?.aiText ? '\nLettura sinottica già fatta:\n' + SYN.aiText.slice(0, 3000) : ''}\n\nScrivi in sezioni brevi con ###: 1) Sintesi in 3 righe, 2) Partenza (lato favorito della linea, mure, prima scelta), 3) Lato per lato: dove andare, quando virare/strambare, vele e cambi con orari, 4) Momenti chiave (rotazioni, passaggi frontali, bonacce, notte), 5) Piano B se la previsione sbaglia (segnali da osservare in acqua), 6) Checklist vele da preparare in coperta per ogni lato.`;
-    out.innerHTML = md(await askClaude([{ type: 'text', text }], SYS_METEO, 4000));
+    if (!S.apiKey) st.textContent = '';
+    out.innerHTML = md(await askAI([{ type: 'text', text }], SYS_METEO, 4000, out));
     st.textContent = 'Piano generato ' + fmtT(Date.now());
-  } catch (e) { st.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  } catch (e) { st.innerHTML = e.message === 'Annullato' ? '' : `<span class="err">${esc(e.message)}</span>`; }
 }
 
 /* ---------------------------------------------------------- navigazione */

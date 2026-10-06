@@ -183,3 +183,6 @@ details summary:focus-visible{outline:2px solid var(--accent)}
 @media (max-width:600px){.top .sr{display:none}}
 #wpTable td input,#wpTable td select{min-width:110px}
 #wpTable td:nth-child(3) input{min-width:180px}
+.handoff{border:1px solid var(--accent);border-radius:8px;padding:12px;display:grid;gap:8px;background:var(--accent-soft);font-size:.9rem;max-width:72ch}
+.handoff p,.handoff ol{margin:0}.handoff ol{padding-left:20px}
+.handoff textarea{background:var(--panel)}
